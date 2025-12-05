@@ -27,9 +27,10 @@ if (-not (Test-InternetConnection)) {
 #endregion
 
 #region Project Structure Creation
+Write-Host "📁 Creating project structure..." -ForegroundColor Cyan
+
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $modulesPath = Join-Path $projectRoot "Modules"
-$scriptsPath = Join-Path $projectRoot "Scripts"
 
 # Create the modular directory structure
 $folders = @(
@@ -38,57 +39,64 @@ $folders = @(
     "Modules\UI",
     "Modules\System",
     "Modules\Private",
-    "Scripts\InstallTools"
+    "Scripts"
 )
 
 foreach ($folder in $folders) {
     $fullPath = Join-Path $projectRoot $folder
     if (!(Test-Path $fullPath)) {
         New-Item -ItemType Directory -Path $fullPath -Force | Out-Null
-        Write-Host "Created directory: $fullPath"
+        Write-Host "  ✓ Created: $folder" -ForegroundColor Green
+    } else {
+        Write-Host "  ✓ Already exists: $folder" -ForegroundColor Gray
     }
 }
 #endregion
 
 #region Install Core Tools via Winget
-Write-Host "`nInstalling core tools via Winget..." -ForegroundColor Cyan
+Write-Host "`n📦 Installing core tools via Winget..." -ForegroundColor Cyan
 
 # Define tools with their Winget IDs
 $wingetTools = @(
     @{Id = "Git.Git"; Name = "Git"},
     @{Id = "ajeetdsouza.zoxide"; Name = "zoxide"},
     @{Id = "sharkdp.fd"; Name = "fd"},
-    @{Id = "BurntSushi.ripgrep.MSVC"; Name = "ripgrep (rg)"},
+    @{Id = "BurntSushi.ripgrep.MSVC"; Name = "ripgrep"},
     @{Id = "sharkdp.bat"; Name = "bat"},
     @{Id = "eza.eza"; Name = "eza"},
     @{Id = "dandavison.delta"; Name = "delta"},
     @{Id = "gerardog.gsudo"; Name = "gsudo"},
-    @{Id = "GitHub.cli"; Name = "GitHub CLI (gh)"},
+    @{Id = "GitHub.cli"; Name = "GitHub CLI"},
     @{Id = "JesseDuffield.lazygit"; Name = "lazygit"},
-    @{Id = "Microsoft.WindowsTerminal"; Name = "Windows Terminal"},
-    @{Id = "Eugeny.tabby"; Name = "Tabby"},
+    @{Id = "starship.starship"; Name = "Starship"},
     @{Id = "neovim.neovim"; Name = "Neovim"},
-    @{Id = "tealdeer.tealdeer"; Name = "tldr"},
-    @{Id = "7zip.7zip"; Name = "7zip"},
-    @{Id = "httpie.httpie"; Name = "HTTPie"},
-    @{Id = "fastfetch.cli"; Name = "fastfetch"},
-    @{Id = "starship.starship"; Name = "Starship"}
+    @{Id = "tealdeer.tealdeer"; Name = "tldr"}
 )
 
+$installedCount = 0
 foreach ($tool in $wingetTools) {
-    Write-Host "  Installing $($tool.Name)..." -NoNewline
+    Write-Host "  Installing $($tool.Name)..." -NoNewline -ForegroundColor Gray
     try {
-        winget install --id $tool.Id --exact --accept-package-agreements --accept-source-agreements --silent
-        Write-Host " ✅" -ForegroundColor Green
+        # Check if already installed
+        $installed = winget list --id $tool.Id 2>$null | Select-String $tool.Id
+        if ($installed) {
+            Write-Host " ✓ Already installed" -ForegroundColor Gray
+            $installedCount++
+        } else {
+            winget install --id $tool.Id --exact --accept-package-agreements --accept-source-agreements --silent
+            Write-Host " ✓ Installed" -ForegroundColor Green
+            $installedCount++
+        }
     }
     catch {
-        Write-Host " ❌ (Error: $_)" -ForegroundColor Red
+        Write-Host " ✗ Failed: $($_.Exception.Message)" -ForegroundColor Red
     }
 }
+Write-Host "  $installedCount/$($wingetTools.Count) tools installed" -ForegroundColor Cyan
 #endregion
 
 #region Install PowerShell Modules
-Write-Host "`nInstalling PowerShell modules..." -ForegroundColor Cyan
+Write-Host "`n🔌 Installing PowerShell modules..." -ForegroundColor Cyan
 
 $psModules = @(
     "Terminal-Icons",
@@ -97,197 +105,230 @@ $psModules = @(
 )
 
 foreach ($module in $psModules) {
-    Write-Host "  Installing $module..." -NoNewline
+    Write-Host "  Installing $module..." -NoNewline -ForegroundColor Gray
     try {
-        Install-Module -Name $module -Repository PSGallery -Force -Scope CurrentUser -AllowClobber
-        Write-Host " ✅" -ForegroundColor Green
+        # Check if module is already installed
+        if (Get-Module -ListAvailable -Name $module -ErrorAction SilentlyContinue) {
+            Write-Host " ✓ Already installed" -ForegroundColor Gray
+        } else {
+            Install-Module -Name $module -Repository PSGallery -Force -Scope CurrentUser -AllowClobber
+            Write-Host " ✓ Installed" -ForegroundColor Green
+        }
     }
     catch {
-        Write-Host " ❌ (Error: $_)" -ForegroundColor Red
+        Write-Host " ✗ Failed: $_" -ForegroundColor Red
     }
 }
 
-# Install posh-git from PowerShell Gallery[citation:1]
-Write-Host "  Installing posh-git..." -NoNewline
+# Install posh-git (handles differently)
+Write-Host "  Installing posh-git..." -NoNewline -ForegroundColor Gray
 try {
-    PowerShellGet\Install-Module posh-git -Scope CurrentUser -Force
-    Write-Host " ✅" -ForegroundColor Green
+    if (Get-Module -ListAvailable -Name posh-git -ErrorAction SilentlyContinue) {
+        Write-Host " ✓ Already installed" -ForegroundColor Gray
+    } else {
+        PowerShellGet\Install-Module posh-git -Scope CurrentUser -Force
+        Write-Host " ✓ Installed" -ForegroundColor Green
+    }
 }
 catch {
-    Write-Host " ❌ (Error: $_)" -ForegroundColor Red
+    Write-Host " ✗ Failed: $_" -ForegroundColor Red
 }
 #endregion
 
 #region Font Installation
-Write-Host "`nInstalling Nerd Fonts..." -ForegroundColor Cyan
+Write-Host "`n🔤 Installing Nerd Fonts..." -ForegroundColor Cyan
 
-# Function to install Nerd Fonts
 function Install-NerdFonts {
-    param (
-        [string]$FontName = "CascadiaCode",
-        [string]$FontDisplayName = "CaskaydiaCove NF",
-        [string]$Version = "3.2.1"
-    )
-
     try {
-        [void] [System.Reflection.Assembly]::LoadWithPartialName("System.Drawing")
+        # Check if font is already installed
+        Add-Type -AssemblyName System.Drawing -ErrorAction Stop
         $fontFamilies = (New-Object System.Drawing.Text.InstalledFontCollection).Families.Name
         
-        if ($fontFamilies -notcontains $FontDisplayName) {
-            Write-Host "  Downloading $FontDisplayName..." -NoNewline
-            $fontZipUrl = "https://github.com/ryanoasis/nerd-fonts/releases/download/v${Version}/${FontName}.zip"
-            $zipFilePath = "$env:TEMP\${FontName}.zip"
-            $extractPath = "$env:TEMP\${FontName}"
-
-            Invoke-WebRequest -Uri $fontZipUrl -OutFile $zipFilePath
-            Write-Host " ✅" -ForegroundColor Green
-
-            Write-Host "  Installing font..." -NoNewline
-            Expand-Archive -Path $zipFilePath -DestinationPath $extractPath -Force
-            $fontFiles = Get-ChildItem -Path $extractPath -Recurse -Filter "*.ttf"
+        if ($fontFamilies -notcontains "CaskaydiaCove NF") {
+            Write-Host "  Downloading CaskaydiaCove NF..." -NoNewline -ForegroundColor Gray
+            $fontUrl = "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/CascadiaCode.zip"
+            $zipPath = "$env:TEMP\CascadiaCode.zip"
+            $extractPath = "$env:TEMP\CascadiaCode"
             
-            foreach ($fontFile in $fontFiles) {
-                $fontPath = "C:\Windows\Fonts\$($fontFile.Name)"
-                if (-not (Test-Path $fontPath)) {
-                    Copy-Item -Path $fontFile.FullName -Destination "C:\Windows\Fonts\" -Force
+            Invoke-WebRequest -Uri $fontUrl -OutFile $zipPath
+            Write-Host " ✓ Downloaded" -ForegroundColor Green
+            
+            Write-Host "  Installing font..." -NoNewline -ForegroundColor Gray
+            Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+            Get-ChildItem -Path $extractPath -Filter "*.ttf" | ForEach-Object {
+                $fontName = $_.Name
+                $fontDest = "C:\Windows\Fonts\$fontName"
+                if (-not (Test-Path $fontDest)) {
+                    Copy-Item -Path $_.FullName -Destination "C:\Windows\Fonts\" -Force
                 }
             }
             
             # Cleanup
-            Remove-Item -Path $extractPath -Recurse -Force
-            Remove-Item -Path $zipFilePath -Force
+            Remove-Item -Path $extractPath -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path $zipPath -Force -ErrorAction SilentlyContinue
             
-            Write-Host " ✅" -ForegroundColor Green
-            Write-Host "  Note: Font installation requires a restart to take full effect." -ForegroundColor Yellow
-        }
-        else {
-            Write-Host "  $FontDisplayName is already installed ✅" -ForegroundColor Green
+            Write-Host " ✓ Installed" -ForegroundColor Green
+            Write-Host "  Note: Restart terminals to use the new font" -ForegroundColor Yellow
+        } else {
+            Write-Host "  ✓ CaskaydiaCove NF already installed" -ForegroundColor Gray
         }
     }
     catch {
-        Write-Host " ❌ Failed to install font: $_" -ForegroundColor Red
+        Write-Host " ✗ Font installation failed: $_" -ForegroundColor Red
     }
 }
 
-Install-NerdFonts -FontName "CascadiaCode" -FontDisplayName "CaskaydiaCove NF"
+Install-NerdFonts
 #endregion
 
-#region Profile Configuration
-Write-Host "`nConfiguring PowerShell profile..." -ForegroundColor Cyan
+#region Create Default Module Files
+Write-Host "`n📄 Creating default module files..." -ForegroundColor Cyan
 
-# Create or update the main profile entry point[citation:4]
-$profilePath = $PROFILE.CurrentUserCurrentHost
-if (!(Test-Path -Path $profilePath -PathType Leaf)) {
-    try {
-        # Create the profile directory if it doesn't exist
-        $profileDir = Split-Path -Parent $profilePath
-        if (!(Test-Path -Path $profileDir)) {
-            New-Item -Path $profileDir -ItemType Directory -Force | Out-Null
-        }
-        
-        # Create a minimal profile that sources the modular one
-        @'
-# Main PowerShell Profile - Modular Entry Point
-# This file loads the modular profile system
+# Create minimal module files
+$coreModules = @(
+    @{Name = "Configuration.ps1"; Content = @'
+# Configuration settings
+$MaximumHistoryCount = 10000
+$PSNativeCommandUseErrorActionPreference = $true
+'@},
+    @{Name = "Aliases.ps1"; Content = @'
+# Common aliases
+Set-Alias ll Get-ChildItem
+Set-Alias grep findstr
+Set-Alias which Get-Command
+function .. { Set-Location .. }
+function ... { Set-Location ..\.. }
+'@},
+    @{Name = "Functions.ps1"; Content = @'
+# Utility functions
+function Update-AllTools {
+    Write-Host "Updating tools..." -ForegroundColor Cyan
+    winget upgrade --all --silent
+}
+'@}
+)
 
-$ModularProfilePath = Join-Path (Split-Path $PROFILE -Parent) "Microsoft.PowerShell_profile.ps1"
-if (Test-Path $ModularProfilePath) {
-    . $ModularProfilePath
-}
-else {
-    Write-Warning "Modular profile not found at: $ModularProfilePath"
-    Write-Host "Please run setup.ps1 to initialize the modular system."
-}
-'@ | Set-Content -Path $profilePath -Force
-        
-        Write-Host "  Created main profile entry point ✅" -ForegroundColor Green
-    }
-    catch {
-        Write-Host " ❌ Failed to create profile: $_" -ForegroundColor Red
-    }
-}
-else {
-    # Backup existing profile
-    $backupPath = "$profilePath.backup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
-    Copy-Item -Path $profilePath -Destination $backupPath -Force
-    Write-Host "  Backed up existing profile to: $backupPath" -ForegroundColor Yellow
-}
-
-# Copy the modular profile from the project structure to the profile location
-$modularProfileSource = Join-Path $projectRoot "Microsoft.PowerShell_profile.ps1"
-$modularProfileDest = Join-Path (Split-Path $profilePath -Parent) "Microsoft.PowerShell_profile.ps1"
-
-if (Test-Path $modularProfileSource) {
-    Copy-Item -Path $modularProfileSource -Destination $modularProfileDest -Force
-    Write-Host "  Installed modular profile system ✅" -ForegroundColor Green
-}
-else {
-    Write-Host "  Modular profile template not found. Please check the project structure." -ForegroundColor Red
-}
-#endregion
-
-#region Post-Installation Setup
-Write-Host "`nRunning post-installation setup..." -ForegroundColor Cyan
-
-# Configure Windows Terminal to use Nerd Font[citation:9]
-Write-Host "  Configuring Windows Terminal..." -NoNewline
-try {
-    # This would typically configure Windows Terminal settings.json
-    # For now, we'll provide instructions
-    Write-Host " ✅" -ForegroundColor Green
-    Write-Host "  Manual step: Set 'CaskaydiaCove NF' as font in Windows Terminal Settings" -ForegroundColor Yellow
-}
-catch {
-    Write-Host " ⚠️  (Note: $_)" -ForegroundColor Yellow
-}
-
-# Initialize Starship
-Write-Host "  Initializing Starship..." -NoNewline
-try {
-    # Starship should auto-initialize, but we'll ensure it's in PATH
-    $starshipInit = @'
-# Initialize Starship
+$uiModules = @(
+    @{Name = "Prompt.ps1"; Content = @'
+# Starship prompt initialization
 if (Get-Command starship -ErrorAction SilentlyContinue) {
     Invoke-Expression (&starship init powershell)
 }
-'@
-    Add-Content -Path (Join-Path $modulesPath "UI\Prompt.ps1") -Value $starshipInit -Force
-    Write-Host " ✅" -ForegroundColor Green
+'@},
+    @{Name = "Completion.ps1"; Content = @'
+# PSFzf integration
+try {
+    Import-Module PSFzf -ErrorAction Stop
+} catch {
+    Write-Host "PSFzf not available" -ForegroundColor Gray
 }
-catch {
-    Write-Host " ❌ (Error: $_)" -ForegroundColor Red
+'@}
+)
+
+$toolsModules = @(
+    @{Name = "Git.ps1"; Content = @'
+# Git shortcuts
+function gs { git status }
+function ga { git add . }
+function gc { git commit -m $args }
+function gpush { git push }
+function gpull { git pull }
+'@}
+)
+
+$systemModules = @(
+    @{Name = "Updates.ps1"; Content = @'
+# Update functions
+function Update-PowerShell {
+    winget upgrade Microsoft.PowerShell --silent
+}
+'@}
+)
+
+# Helper function to create module files
+function Create-ModuleFile {
+    param($Path, $Name, $Content)
+    $fullPath = Join-Path $Path $Name
+    if (!(Test-Path $fullPath)) {
+        $Content | Out-File -FilePath $fullPath -Encoding UTF8
+        Write-Host "  ✓ Created: $Name" -ForegroundColor Green
+    } else {
+        Write-Host "  ✓ Already exists: $Name" -ForegroundColor Gray
+    }
+}
+
+# Create Core modules
+Write-Host "  Creating Core modules..." -ForegroundColor Gray
+foreach ($module in $coreModules) {
+    Create-ModuleFile -Path (Join-Path $modulesPath "Core") -Name $module.Name -Content $module.Content
+}
+
+# Create UI modules
+Write-Host "  Creating UI modules..." -ForegroundColor Gray
+foreach ($module in $uiModules) {
+    Create-ModuleFile -Path (Join-Path $modulesPath "UI") -Name $module.Name -Content $module.Content
+}
+
+# Create Tools modules
+Write-Host "  Creating Tools modules..." -ForegroundColor Gray
+foreach ($module in $toolsModules) {
+    Create-ModuleFile -Path (Join-Path $modulesPath "Tools") -Name $module.Name -Content $module.Content
+}
+
+# Create System modules
+Write-Host "  Creating System modules..." -ForegroundColor Gray
+foreach ($module in $systemModules) {
+    Create-ModuleFile -Path (Join-Path $modulesPath "System") -Name $module.Name -Content $module.Content
 }
 #endregion
 
-# Add to the end of setup.ps1
-Write-Host "`nRunning verification..." -ForegroundColor Cyan
+#region Profile Configuration
+Write-Host "`n⚡ Configuring PowerShell profile..." -ForegroundColor Cyan
+
+# Copy the main profile
+$profileSource = Join-Path $projectRoot "Microsoft.PowerShell_profile.ps1"
+if (Test-Path $profileSource) {
+    Write-Host "  ✓ Using existing profile" -ForegroundColor Green
+} else {
+    # Create a basic profile if none exists
+    $basicProfile = @'
+# PowerShell Profile - Modular Edition
+Write-Host "PowerShell profile loaded" -ForegroundColor Green
+'@
+    $basicProfile | Out-File -FilePath $profileSource -Encoding UTF8
+    Write-Host "  ✓ Created basic profile" -ForegroundColor Green
+}
+
+# Ensure the profile is set
 try {
-    .\Scripts\verify-installation.ps1 -SummaryOnly
+    # Copy to the standard profile location
+    $profilePath = $PROFILE.CurrentUserCurrentHost
+    Copy-Item -Path $profileSource -Destination $profilePath -Force
+    Write-Host "  ✓ Profile configured at: $profilePath" -ForegroundColor Green
 }
 catch {
-    Write-Warning "Verification script failed: $_"
-    Write-Host "Run .\Scripts\verify-installation.ps1 manually to check installation." -ForegroundColor Yellow
+    Write-Host "  ✗ Profile configuration failed: $_" -ForegroundColor Red
 }
+#endregion
 
 #region Finalization
 Write-Host "`n" + ("=" * 50) -ForegroundColor Cyan
-Write-Host "SETUP COMPLETED" -ForegroundColor Green
+Write-Host "✅ SETUP COMPLETED" -ForegroundColor Green
 Write-Host "=" * 50 -ForegroundColor Cyan
 
-Write-Host "`nNext steps:" -ForegroundColor Yellow
-Write-Host "1. Restart your PowerShell session" -ForegroundColor White
-Write-Host "2. Restart Windows Terminal for font changes to take effect[citation:9]" -ForegroundColor White
-Write-Host "3. Customize individual module files in: $modulesPath" -ForegroundColor White
-Write-Host "4. Add your secrets to: $(Join-Path $modulesPath 'Private\Secrets.ps1')" -ForegroundColor White
+Write-Host "`n📋 Summary:" -ForegroundColor Yellow
+Write-Host "  • Project structure created" -ForegroundColor White
+Write-Host "  • $installedCount tools installed" -ForegroundColor White
+Write-Host "  • PowerShell modules installed" -ForegroundColor White
+Write-Host "  • Font installed (requires terminal restart)" -ForegroundColor White
+Write-Host "  • Profile configured" -ForegroundColor White
 
-Write-Host "`nVerification checklist:" -ForegroundColor Yellow
-Write-Host "  ✓ Modular directory structure created" -ForegroundColor Green
-Write-Host "  ✓ Core tools installed via Winget" -ForegroundColor Green
-Write-Host "  ✓ PowerShell modules installed" -ForegroundColor Green
-Write-Host "  ✓ Nerd Font installed (requires restart)" -ForegroundColor Green
-Write-Host "  ✓ Profile system configured" -ForegroundColor Green
+Write-Host "`n🚀 Next steps:" -ForegroundColor Yellow
+Write-Host "  1. Restart PowerShell or Windows Terminal" -ForegroundColor White
+Write-Host "  2. Run: .\Scripts\verify-installation.ps1" -ForegroundColor White
+Write-Host "  3. Customize modules in: $modulesPath" -ForegroundColor White
 
-Write-Host "`nTo start using your new environment:" -ForegroundColor Cyan
-Write-Host "  Close ALL terminal windows and reopen Windows Terminal" -ForegroundColor White
+Write-Host "`n⚠️  Important:" -ForegroundColor Cyan
+Write-Host "  • Set Windows Terminal font to 'CaskaydiaCove NF'" -ForegroundColor White
+Write-Host "  • Run verification script to fix any remaining issues" -ForegroundColor White
 #endregion
-

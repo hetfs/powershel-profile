@@ -33,7 +33,10 @@ git clone https://github.com/hetfs/powershell-profile.git
 2. **Run the setup script from the project root**
 
 ```powershell
-Set-Location powershell-profile
+# Navigate to your project folder
+Set-Location "$HOME\Documents\PowerShell"
+
+# Execute your local installer
 .\setup.ps1
 ```
 

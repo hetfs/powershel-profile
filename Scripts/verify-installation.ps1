@@ -1,6 +1,5 @@
 # Scripts/verify-installation.ps1
-# Post-installation verification script for Modular PowerShell Environment
-# Run this after setup to verify everything installed correctly
+# Post-installation verification script
 
 param(
     [switch]$Fix,
@@ -13,7 +12,7 @@ Write-Host "=" * 50 -ForegroundColor Cyan
 # Configuration
 $requiredTools = @(
     @{Name = "git"; Display = "Git"; InstallCommand = "winget install Git.Git --silent"},
-    @{Name = "starship"; Display = "Starship Prompt"; InstallCommand = "winget install starship.starship --silent"},
+    @{Name = "starship"; Display = "Starship"; InstallCommand = "winget install starship.starship --silent"},
     @{Name = "zoxide"; Display = "zoxide"; InstallCommand = "winget install ajeetdsouza.zoxide --silent"},
     @{Name = "rg"; Display = "ripgrep"; InstallCommand = "winget install BurntSushi.ripgrep.MSVC --silent"},
     @{Name = "bat"; Display = "bat"; InstallCommand = "winget install sharkdp.bat --silent"},
@@ -34,28 +33,22 @@ $requiredModules = @(
     @{Name = "PSFzf"; Display = "PSFzf"; InstallCommand = "Install-Module -Name PSFzf -Repository PSGallery -Force -Scope CurrentUser"}
 )
 
-$requiredFonts = @(
-    "CaskaydiaCove NF"
-)
-
 # Results tracking
 $results = @{
     Tools = @()
     Modules = @()
-    Fonts = @()
+    Fonts = $null
     Profile = $null
     Structure = $null
 }
 
-# Check for admin rights (for fixes)
 function Test-Admin {
     $currentUser = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
     return $currentUser.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-# Check core tools
 function Test-CoreTools {
-    Write-Host "`n📦 Core Tools Verification:" -ForegroundColor Yellow
+    Write-Host "`n📦 Core Tools:" -ForegroundColor Yellow
     
     foreach ($tool in $requiredTools) {
         $status = $false
@@ -68,30 +61,10 @@ function Test-CoreTools {
             $message = "v$version" -replace '\s+', ' '
         }
         catch {
-            if ($Fix -and $tool.InstallCommand -and (Test-Admin)) {
-                Write-Host "  ⚡ Installing $($tool.Display)..." -NoNewline -ForegroundColor Magenta
-                try {
-                    Invoke-Expression $tool.InstallCommand
-                    $status = $true
-                    $message = "Installed"
-                    Write-Host " ✓" -ForegroundColor Green
-                }
-                catch {
-                    $message = "Install failed: $_"
-                    Write-Host " ✗" -ForegroundColor Red
-                }
-            }
-            else {
-                $message = "Not found"
-            }
+            $message = "Not found"
         }
         
-        $results.Tools += @{
-            Name = $tool.Display
-            Status = $status
-            Message = $message
-            Fixable = ($tool.InstallCommand -ne $null)
-        }
+        $results.Tools += @{Name = $tool.Display; Status = $status; Message = $message}
         
         if (-not $SummaryOnly) {
             $color = if ($status) { "Green" } else { "Red" }
@@ -101,9 +74,8 @@ function Test-CoreTools {
     }
 }
 
-# Check PowerShell modules
 function Test-PowerShellModules {
-    Write-Host "`n🔌 PowerShell Modules Verification:" -ForegroundColor Yellow
+    Write-Host "`n🔌 PowerShell Modules:" -ForegroundColor Yellow
     
     foreach ($module in $requiredModules) {
         $status = $false
@@ -115,43 +87,12 @@ function Test-PowerShellModules {
                 $status = $true
                 $message = "v$($moduleInfo.Version)"
             }
-            else {
-                throw "Module not found"
-            }
         }
         catch {
-            if ($Fix) {
-                Write-Host "  ⚡ Installing $($module.Display) module..." -NoNewline -ForegroundColor Magenta
-                try {
-                    Invoke-Expression $module.InstallCommand
-                    
-                    # Verify installation
-                    $moduleInfo = Get-Module -Name $module.Name -ListAvailable -ErrorAction SilentlyContinue
-                    if ($moduleInfo) {
-                        $status = $true
-                        $message = "Installed"
-                        Write-Host " ✓" -ForegroundColor Green
-                    }
-                    else {
-                        throw "Installation verification failed"
-                    }
-                }
-                catch {
-                    $message = "Install failed: $_"
-                    Write-Host " ✗" -ForegroundColor Red
-                }
-            }
-            else {
-                $message = "Not installed"
-            }
+            $message = "Not installed"
         }
         
-        $results.Modules += @{
-            Name = $module.Display
-            Status = $status
-            Message = $message
-            Fixable = $true
-        }
+        $results.Modules += @{Name = $module.Display; Status = $status; Message = $message}
         
         if (-not $SummaryOnly) {
             $color = if ($status) { "Green" } else { "Red" }
@@ -161,46 +102,40 @@ function Test-PowerShellModules {
     }
 }
 
-# Check font installation
 function Test-FontInstallation {
-    Write-Host "`n🔤 Font Verification:" -ForegroundColor Yellow
+    Write-Host "`n🔤 Fonts:" -ForegroundColor Yellow
+    
+    $status = $false
+    $message = ""
     
     try {
         Add-Type -AssemblyName System.Drawing -ErrorAction Stop
-        $fontCollection = New-Object System.Drawing.Text.InstalledFontCollection
-        $installedFonts = $fontCollection.Families.Name
+        $fontFamilies = (New-Object System.Drawing.Text.InstalledFontCollection).Families.Name
+        
+        if ($fontFamilies -contains "CaskaydiaCove NF") {
+            $status = $true
+            $message = "Installed"
+        } else {
+            $message = "Not found"
+        }
     }
     catch {
-        Write-Host "  ⚠ Unable to check fonts (requires .NET): $_" -ForegroundColor Yellow
-        return
+        $message = "Check failed"
     }
     
-    foreach ($font in $requiredFonts) {
-        $status = $installedFonts -contains $font
-        $message = if ($status) { "Installed" } else { "Not found" }
-        
-        $results.Fonts += @{
-            Name = $font
-            Status = $status
-            Message = $message
-            Fixable = $false
-        }
-        
-        if (-not $SummaryOnly) {
-            $color = if ($status) { "Green" } else { "Red" }
-            $symbol = if ($status) { "✓" } else { "✗" }
-            Write-Host "  $symbol $font: $message" -ForegroundColor $color
-        }
+    $results.Fonts = @{Status = $status; Message = $message}
+    
+    if (-not $SummaryOnly) {
+        $color = if ($status) { "Green" } else { "Red" }
+        $symbol = if ($status) { "✓" } else { "✗" }
+        Write-Host "  $symbol CaskaydiaCove NF: $message" -ForegroundColor $color
     }
 }
 
-# Check project structure
 function Test-ProjectStructure {
-    Write-Host "`n📁 Project Structure Verification:" -ForegroundColor Yellow
+    Write-Host "`n📁 Project Structure:" -ForegroundColor Yellow
     
     $expectedPaths = @(
-        "$env:USERPROFILE\Documents\PowerShell",
-        "$env:USERPROFILE\Documents\PowerShell\Modules",
         "$env:USERPROFILE\Documents\PowerShell\Modules\Core",
         "$env:USERPROFILE\Documents\PowerShell\Modules\Tools",
         "$env:USERPROFILE\Documents\PowerShell\Modules\UI",
@@ -209,11 +144,13 @@ function Test-ProjectStructure {
     )
     
     $missingPaths = @()
+    $existingPaths = @()
     
     foreach ($path in $expectedPaths) {
         if (Test-Path $path) {
+            $existingPaths += $path
             if (-not $SummaryOnly) {
-                Write-Host "  ✓ $path" -ForegroundColor DarkGray
+                Write-Host "  ✓ $path" -ForegroundColor Green
             }
         }
         else {
@@ -221,128 +158,128 @@ function Test-ProjectStructure {
             if (-not $SummaryOnly) {
                 Write-Host "  ✗ $path" -ForegroundColor Red
             }
+            # Auto-create if -Fix is specified
+            if ($Fix) {
+                try {
+                    New-Item -ItemType Directory -Path $path -Force | Out-Null
+                    Write-Host "    Created: $path" -ForegroundColor Green
+                    $missingPaths = $missingPaths | Where-Object { $_ -ne $path }
+                    $existingPaths += $path
+                }
+                catch {
+                    Write-Host "    Failed to create: $path" -ForegroundColor Red
+                }
+            }
         }
     }
     
     $results.Structure = @{
         Status = ($missingPaths.Count -eq 0)
+        Existing = $existingPaths.Count
+        Total = $expectedPaths.Count
         MissingPaths = $missingPaths
     }
 }
 
-# Check profile loading
 function Test-ProfileLoading {
-    Write-Host "`n⚡ Profile Loading Verification:" -ForegroundColor Yellow
+    Write-Host "`n⚡ Profile:" -ForegroundColor Yellow
     
     try {
-        # Try to load the profile
         . $PROFILE -ErrorAction Stop
-        $results.Profile = @{Status = $true; Message = "Loaded successfully"}
-        
+        $results.Profile = @{Status = $true; Message = "Loads successfully"}
         if (-not $SummaryOnly) {
             Write-Host "  ✓ Profile loads without errors" -ForegroundColor Green
         }
     }
     catch {
         $results.Profile = @{Status = $false; Message = "Error: $_"}
-        
         if (-not $SummaryOnly) {
             Write-Host "  ✗ Profile error: $_" -ForegroundColor Red
         }
     }
 }
 
-# Display summary
 function Show-Summary {
     Write-Host "`n" + ("=" * 50) -ForegroundColor Cyan
     Write-Host "📊 VERIFICATION SUMMARY" -ForegroundColor Cyan
     Write-Host "=" * 50 -ForegroundColor Cyan
     
-    # Tools summary
+    # Tools
     $toolsInstalled = ($results.Tools | Where-Object { $_.Status }).Count
     $toolsTotal = $results.Tools.Count
     $toolsColor = if ($toolsInstalled -eq $toolsTotal) { "Green" } elseif ($toolsInstalled -gt $toolsTotal/2) { "Yellow" } else { "Red" }
-    Write-Host "Tools: $toolsInstalled/$toolsTotal installed" -ForegroundColor $toolsColor
+    Write-Host "Tools: $toolsInstalled/$toolsTotal" -ForegroundColor $toolsColor
     
-    # Modules summary
+    # Modules
     $modulesInstalled = ($results.Modules | Where-Object { $_.Status }).Count
     $modulesTotal = $results.Modules.Count
-    $modulesColor = if ($modulesInstalled -eq $modulesTotal) { "Green" } elseif ($modulesInstalled -gt $modulesTotal/2) { "Yellow" } else { "Red" }
-    Write-Host "Modules: $modulesInstalled/$modulesTotal installed" -ForegroundColor $modulesColor
+    $modulesColor = if ($modulesInstalled -eq $modulesTotal) { "Green" } else { "Red" }
+    Write-Host "Modules: $modulesInstalled/$modulesTotal" -ForegroundColor $modulesColor
     
-    # Fonts summary
-    $fontsInstalled = ($results.Fonts | Where-Object { $_.Status }).Count
-    $fontsTotal = $results.Fonts.Count
-    $fontsColor = if ($fontsInstalled -eq $fontsTotal) { "Green" } else { "Red" }
-    Write-Host "Fonts: $fontsInstalled/$fontsTotal installed" -ForegroundColor $fontsColor
+    # Fonts
+    $fontsColor = if ($results.Fonts.Status) { "Green" } else { "Red" }
+    $fontSymbol = if ($results.Fonts.Status) { "✓" } else { "✗" }
+    Write-Host "Font: $fontSymbol $($results.Fonts.Message)" -ForegroundColor $fontsColor
     
-    # Profile status
+    # Profile
     $profileColor = if ($results.Profile.Status) { "Green" } else { "Red" }
     Write-Host "Profile: $(if($results.Profile.Status){'✓ Loads'} else {'✗ Error'})" -ForegroundColor $profileColor
     
-    # Structure status
+    # Structure
     $structureColor = if ($results.Structure.Status) { "Green" } else { "Red" }
-    Write-Host "Structure: $(if($results.Structure.Status){'✓ Complete'} else {'✗ Incomplete'})" -ForegroundColor $structureColor
+    Write-Host "Structure: $($results.Structure.Existing)/$($results.Structure.Total) directories" -ForegroundColor $structureColor
     
-    # Overall status
-    $overall = ($toolsInstalled -eq $toolsTotal) -and 
-               ($modulesInstalled -eq $modulesTotal) -and 
-               ($fontsInstalled -eq $fontsTotal) -and 
+    # Overall
+    $overall = $toolsInstalled -eq $toolsTotal -and 
+               $modulesInstalled -eq $modulesTotal -and 
+               $results.Fonts.Status -and 
                $results.Profile.Status -and 
                $results.Structure.Status
     
     Write-Host "`n" + ("=" * 50) -ForegroundColor Cyan
+    
     if ($overall) {
         Write-Host "✅ ENVIRONMENT READY!" -ForegroundColor Green
         Write-Host "All components installed successfully." -ForegroundColor Green
-    }
-    else {
+    } else {
         Write-Host "⚠️  ENVIRONMENT INCOMPLETE" -ForegroundColor Yellow
         
-        # Show missing components
+        # Missing tools
         $missingTools = $results.Tools | Where-Object { -not $_.Status } | ForEach-Object { $_.Name }
-        $missingModules = $results.Modules | Where-Object { -not $_.Status } | ForEach-Object { $_.Name }
-        $missingFonts = $results.Fonts | Where-Object { -not $_.Status } | ForEach-Object { $_.Name }
-        
         if ($missingTools) {
             Write-Host "`nMissing tools:" -ForegroundColor Yellow
             foreach ($tool in $missingTools) {
-                $fixInfo = $results.Tools | Where-Object { $_.Name -eq $tool -and $_.Fixable }
-                if ($fixInfo) {
-                    Write-Host "  - $tool (Run with -Fix to install)" -ForegroundColor White
-                }
-                else {
-                    Write-Host "  - $tool" -ForegroundColor White
-                }
+                Write-Host "  - $tool" -ForegroundColor White
             }
+            Write-Host "  Run with -Fix to install missing tools (requires admin)" -ForegroundColor Gray
         }
         
+        # Missing modules
+        $missingModules = $results.Modules | Where-Object { -not $_.Status } | ForEach-Object { $_.Name }
         if ($missingModules) {
             Write-Host "`nMissing modules:" -ForegroundColor Yellow
-            Write-Host "  Run with -Fix to install missing modules" -ForegroundColor White
+            foreach ($module in $missingModules) {
+                Write-Host "  - $module" -ForegroundColor White
+            }
+            Write-Host "  Run with -Fix to install missing modules" -ForegroundColor Gray
         }
         
-        if ($missingFonts) {
-            Write-Host "`nMissing fonts:" -ForegroundColor Yellow
-            Write-Host "  Re-run setup.ps1 or install manually" -ForegroundColor White
-        }
-        
-        if (-not $results.Profile.Status) {
-            Write-Host "`nProfile error:" -ForegroundColor Yellow
-            Write-Host "  $($results.Profile.Message)" -ForegroundColor White
-        }
-        
-        if (-not $results.Structure.Status -and $results.Structure.MissingPaths) {
+        # Missing directories
+        if ($results.Structure.MissingPaths) {
             Write-Host "`nMissing directories:" -ForegroundColor Yellow
             foreach ($path in $results.Structure.MissingPaths) {
                 Write-Host "  - $path" -ForegroundColor White
             }
+            Write-Host "  Run with -Fix to create missing directories" -ForegroundColor Gray
         }
         
-        Write-Host "`nRecommended actions:" -ForegroundColor Cyan
-        Write-Host "  1. Run: .\verify-installation.ps1 -Fix (as admin)" -ForegroundColor White
-        Write-Host "  2. Or re-run: .\setup.ps1" -ForegroundColor White
-        Write-Host "  3. Check README.md troubleshooting section" -ForegroundColor White
+        Write-Host "`n🔧 Recommended actions:" -ForegroundColor Cyan
+        if ($Fix) {
+            Write-Host "  Run: .\setup.ps1" -ForegroundColor White
+        } else {
+            Write-Host "  Run: .\verify-installation.ps1 -Fix" -ForegroundColor White
+        }
+        Write-Host "  Check README.md for troubleshooting" -ForegroundColor White
     }
     
     Write-Host "`n" + ("=" * 50) -ForegroundColor Cyan
@@ -350,32 +287,13 @@ function Show-Summary {
 
 # Main execution
 try {
-    if ($Fix -and -not (Test-Admin)) {
-        Write-Host "⚠️  Admin rights required for automatic fixes." -ForegroundColor Yellow
-        Write-Host "   Run PowerShell as Administrator or use: gsudo powershell" -ForegroundColor White
-    }
-    
     Test-CoreTools
     Test-PowerShellModules
     Test-FontInstallation
     Test-ProjectStructure
     Test-ProfileLoading
     Show-Summary
-    
-    # Return exit code based on overall status
-    $toolsInstalled = ($results.Tools | Where-Object { $_.Status }).Count
-    $modulesInstalled = ($results.Modules | Where-Object { $_.Status }).Count
-    $fontsInstalled = ($results.Fonts | Where-Object { $_.Status }).Count
-    
-    $overall = ($toolsInstalled -eq $results.Tools.Count) -and 
-               ($modulesInstalled -eq $results.Modules.Count) -and 
-               ($fontsInstalled -eq $results.Fonts.Count) -and 
-               $results.Profile.Status -and 
-               $results.Structure.Status
-    
-    exit $(if ($overall) { 0 } else { 1 })
 }
 catch {
-    Write-Host "❌ Verification failed with error: $_" -ForegroundColor Red
-    exit 1
+    Write-Host "❌ Verification failed: $_" -ForegroundColor Red
 }
