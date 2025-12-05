@@ -10,22 +10,78 @@ $modulesPath = Join-Path $scriptRoot "Modules"
 # Error handling preference
 $ErrorActionPreference = "Continue"
 
-#region Load Core Modules
-Write-Host "  Loading core modules..." -ForegroundColor DarkGray
-$corePath = Join-Path $modulesPath "Core"
-if (Test-Path $corePath) {
-    Get-ChildItem -Path $corePath -Filter "*.ps1" | ForEach-Object {
+#region Auto-Create Missing Module Directories
+Write-Host "  Checking module structure..." -ForegroundColor DarkGray
+
+# Define required module directories
+$requiredDirectories = @(
+    @{Path = "Core"; Description = "Essential functionality"},
+    @{Path = "UI"; Description = "User interface"},
+    @{Path = "Tools"; Description = "Development tools"},
+    @{Path = "System"; Description = "System utilities"},
+    @{Path = "Private"; Description = "Private data (optional)"}
+)
+
+$createdDirectories = 0
+$missingDirectories = @()
+
+foreach ($dirInfo in $requiredDirectories) {
+    $fullPath = Join-Path $modulesPath $dirInfo.Path
+    
+    if (-not (Test-Path $fullPath)) {
+        $missingDirectories += $dirInfo.Path
+        
+        # Create the directory
         try {
-            . $_.FullName
-            Write-Host "    ✓ $($_.BaseName)" -ForegroundColor DarkGray
+            New-Item -ItemType Directory -Path $fullPath -Force | Out-Null
+            Write-Host "    ✓ Created: $($dirInfo.Path) ($($dirInfo.Description))" -ForegroundColor Green
+            $createdDirectories++
+            
+            # Create a starter file for Core, UI, Tools, System
+            if ($dirInfo.Path -ne "Private") {
+                $starterFile = Join-Path $fullPath "$($dirInfo.Path).ps1"
+                $starterContent = @"
+# $($dirInfo.Description)
+# Add your $($dirInfo.Path.ToLower()) functions and aliases here
+
+Write-Host "  $($dirInfo.Path) module loaded" -ForegroundColor DarkGray
+"@
+                $starterContent | Out-File -FilePath $starterFile -Encoding UTF8
+            }
         }
         catch {
-            Write-Warning "Failed to load $($_.Name): $_"
+            Write-Host "    ⚠ Failed to create: $($dirInfo.Path)" -ForegroundColor Red
         }
+    } else {
+        Write-Host "    ✓ Found: $($dirInfo.Path)" -ForegroundColor Gray
+    }
+}
+
+if ($createdDirectories -gt 0) {
+    Write-Host "    Created $createdDirectories missing directories" -ForegroundColor Cyan
+}
+#endregion
+
+#region Load Core Modules
+Write-Host "`n  Loading core modules..." -ForegroundColor DarkGray
+$corePath = Join-Path $modulesPath "Core"
+if (Test-Path $corePath) {
+    $coreFiles = Get-ChildItem -Path $corePath -Filter "*.ps1" -ErrorAction SilentlyContinue
+    if ($coreFiles) {
+        $coreFiles | ForEach-Object {
+            try {
+                . $_.FullName
+                Write-Host "    ✓ $($_.BaseName)" -ForegroundColor DarkGray
+            }
+            catch {
+                Write-Host "    ⚠ Failed to load $($_.Name): $_" -ForegroundColor Yellow
+            }
+        }
+    } else {
+        Write-Host "    ℹ No module files found in Core directory" -ForegroundColor Gray
     }
 } else {
-    Write-Host "    ⚠ Core directory not found: $corePath" -ForegroundColor Yellow
-    Write-Host "    Run .\setup.ps1 to create the modular structure" -ForegroundColor DarkGray
+    Write-Host "    ⚠ Core directory not found" -ForegroundColor Yellow
 }
 #endregion
 
@@ -35,25 +91,30 @@ $uiPath = Join-Path $modulesPath "UI"
 
 # Load Terminal-Icons before prompt for better visual experience
 try {
-    Import-Module Terminal-Icons -ErrorAction Stop
+    Import-Module Terminal-Icons -ErrorAction SilentlyContinue
     Write-Host "    ✓ Terminal-Icons" -ForegroundColor DarkGray
 }
 catch {
-    Write-Warning "Terminal-Icons module not available. Run setup.ps1 to install."
+    Write-Host "    ℹ Terminal-Icons not available (optional)" -ForegroundColor Gray
 }
 
 if (Test-Path $uiPath) {
-    Get-ChildItem -Path $uiPath -Filter "*.ps1" | ForEach-Object {
-        try {
-            . $_.FullName
-            Write-Host "    ✓ $($_.BaseName)" -ForegroundColor DarkGray
+    $uiFiles = Get-ChildItem -Path $uiPath -Filter "*.ps1" -ErrorAction SilentlyContinue
+    if ($uiFiles) {
+        $uiFiles | ForEach-Object {
+            try {
+                . $_.FullName
+                Write-Host "    ✓ $($_.BaseName)" -ForegroundColor DarkGray
+            }
+            catch {
+                Write-Host "    ⚠ Failed to load $($_.Name): $_" -ForegroundColor Yellow
+            }
         }
-        catch {
-            Write-Warning "Failed to load $($_.Name): $_"
-        }
+    } else {
+        Write-Host "    ℹ No module files found in UI directory" -ForegroundColor Gray
     }
 } else {
-    Write-Host "    ⚠ UI directory not found: $uiPath" -ForegroundColor Yellow
+    Write-Host "    ⚠ UI directory not found" -ForegroundColor Yellow
 }
 #endregion
 
@@ -63,25 +124,30 @@ $toolsPath = Join-Path $modulesPath "Tools"
 
 # Load posh-git for Git integration
 try {
-    Import-Module posh-git -ErrorAction Stop
+    Import-Module posh-git -ErrorAction SilentlyContinue
     Write-Host "    ✓ posh-git" -ForegroundColor DarkGray
 }
 catch {
-    Write-Warning "posh-git module not available. Git integration limited."
+    Write-Host "    ℹ posh-git not available (optional)" -ForegroundColor Gray
 }
 
 if (Test-Path $toolsPath) {
-    Get-ChildItem -Path $toolsPath -Filter "*.ps1" | ForEach-Object {
-        try {
-            . $_.FullName
-            Write-Host "    ✓ $($_.BaseName)" -ForegroundColor DarkGray
+    $toolsFiles = Get-ChildItem -Path $toolsPath -Filter "*.ps1" -ErrorAction SilentlyContinue
+    if ($toolsFiles) {
+        $toolsFiles | ForEach-Object {
+            try {
+                . $_.FullName
+                Write-Host "    ✓ $($_.BaseName)" -ForegroundColor DarkGray
+            }
+            catch {
+                Write-Host "    ⚠ Failed to load $($_.Name): $_" -ForegroundColor Yellow
+            }
         }
-        catch {
-            Write-Warning "Failed to load $($_.Name): $_"
-        }
+    } else {
+        Write-Host "    ℹ No module files found in Tools directory" -ForegroundColor Gray
     }
 } else {
-    Write-Host "    ⚠ Tools directory not found: $toolsPath" -ForegroundColor Yellow
+    Write-Host "    ⚠ Tools directory not found" -ForegroundColor Yellow
 }
 #endregion
 
@@ -89,39 +155,29 @@ if (Test-Path $toolsPath) {
 Write-Host "  Loading system utilities..." -ForegroundColor DarkGray
 $systemPath = Join-Path $modulesPath "System"
 if (Test-Path $systemPath) {
-    Get-ChildItem -Path $systemPath -Filter "*.ps1" | ForEach-Object {
-        try {
-            . $_.FullName
-            Write-Host "    ✓ $($_.BaseName)" -ForegroundColor DarkGray
+    $systemFiles = Get-ChildItem -Path $systemPath -Filter "*.ps1" -ErrorAction SilentlyContinue
+    if ($systemFiles) {
+        $systemFiles | ForEach-Object {
+            try {
+                . $_.FullName
+                Write-Host "    ✓ $($_.BaseName)" -ForegroundColor DarkGray
+            }
+            catch {
+                Write-Host "    ⚠ Failed to load $($_.Name): $_" -ForegroundColor Yellow
+            }
         }
-        catch {
-            Write-Warning "Failed to load $($_.Name): $_"
-        }
+    } else {
+        Write-Host "    ℹ No module files found in System directory" -ForegroundColor Gray
     }
 } else {
-    Write-Host "    ⚠ System directory not found: $systemPath" -ForegroundColor Yellow
+    Write-Host "    ⚠ System directory not found" -ForegroundColor Yellow
 }
 #endregion
 
-#region Load Private Modules (Optional)
-$privatePath = Join-Path $modulesPath "Private"
-if (Test-Path $privatePath) {
-    Write-Host "  Loading private modules..." -ForegroundColor DarkGray
-    Get-ChildItem -Path $privatePath -Filter "*.ps1" | ForEach-Object {
-        try {
-            . $_.FullName
-            Write-Host "    ✓ $($_.BaseName)" -ForegroundColor DarkGray
-        }
-        catch {
-            Write-Warning "Failed to load private module $($_.Name)"
-        }
-    }
-} else {
-    Write-Host "    ℹ Private directory not found (optional): $privatePath" -ForegroundColor DarkGray
-}
-#endregion
+#region Initialize Essential Modules
+Write-Host "`n  Initializing essential components..." -ForegroundColor DarkGray
 
-#region Initialize PSReadLine
+# Initialize PSReadLine (essential for good UX)
 try {
     Import-Module PSReadLine -ErrorAction Stop
     
@@ -133,77 +189,66 @@ try {
     Write-Host "    ✓ PSReadLine" -ForegroundColor DarkGray
 }
 catch {
-    Write-Warning "PSReadLine module not available. Limited line editing features."
+    Write-Host "    ⚠ PSReadLine not available" -ForegroundColor Yellow
 }
-#endregion
 
-#region Initialize PSFzf (if available)
+# Initialize PSFzf (optional but nice to have)
 try {
-    Import-Module PSFzf -ErrorAction Stop
+    Import-Module PSFzf -ErrorAction SilentlyContinue
     Write-Host "    ✓ PSFzf" -ForegroundColor DarkGray
 }
 catch {
-    Write-Host "    ℹ PSFzf module not available (optional)" -ForegroundColor DarkGray
+    Write-Host "    ℹ PSFzf not available (optional)" -ForegroundColor Gray
 }
-#endregion
 
-#region Initialize Starship Prompt
+# Initialize Starship Prompt
 if (Get-Command starship -ErrorAction SilentlyContinue) {
     try {
         Invoke-Expression (&starship init powershell)
-        Write-Host "    ✓ Starship prompt initialized" -ForegroundColor DarkGray
+        Write-Host "    ✓ Starship prompt" -ForegroundColor DarkGray
     }
     catch {
-        Write-Warning "Failed to initialize Starship prompt: $_"
+        Write-Host "    ⚠ Starship initialization failed" -ForegroundColor Yellow
     }
 } else {
-    Write-Host "    ⚠ Starship not found. Install with: winget install starship.starship" -ForegroundColor Yellow
+    Write-Host "    ⚠ Starship not found. Run: winget install starship.starship" -ForegroundColor Yellow
 }
 #endregion
 
 #region Final Initialization
 Write-Host "`nEnvironment ready!" -ForegroundColor Green
 Write-Host "Modules loaded from: $modulesPath" -ForegroundColor DarkGray
-Write-Host "Customize your environment by editing files in the Modules directory." -ForegroundColor DarkGray
 
 # Display quick status
-$modulesLoaded = 0
-if (Test-Path $corePath) { $modulesLoaded += (Get-ChildItem -Path $corePath -Filter "*.ps1").Count }
-if (Test-Path $uiPath) { $modulesLoaded += (Get-ChildItem -Path $uiPath -Filter "*.ps1").Count }
-if (Test-Path $toolsPath) { $modulesLoaded += (Get-ChildItem -Path $toolsPath -Filter "*.ps1").Count }
-if (Test-Path $systemPath) { $modulesLoaded += (Get-ChildItem -Path $systemPath -Filter "*.ps1").Count }
-
-Write-Host "`nModules loaded: $modulesLoaded" -ForegroundColor DarkGray
-
-try {
-    $gitVersion = (git --version 2>$null) -replace 'git version ', ''
-    Write-Host "Git: v$gitVersion" -ForegroundColor DarkGray
-}
-catch {
-    Write-Host "Git: Not available" -ForegroundColor DarkGray
+$status = @{
+    Git = if (Get-Command git -ErrorAction SilentlyContinue) { "✓ v$(git --version 2>$null | ForEach-Object { $_ -replace 'git version ', '' })" } else { "✗ Not found" }
+    Starship = if (Get-Command starship -ErrorAction SilentlyContinue) { "✓ Ready" } else { "✗ Not installed" }
+    zoxide = if (Get-Command zoxide -ErrorAction SilentlyContinue) { "✓ Ready" } else { "✗ Not found" }
+    Font = try { 
+        Add-Type -AssemblyName System.Drawing -ErrorAction Stop
+        $fonts = (New-Object System.Drawing.Text.InstalledFontCollection).Families.Name
+        if ($fonts -contains "CaskaydiaCove NF") { "✓ Installed" } else { "✗ Missing" }
+    } catch { "? Unknown" }
 }
 
-if (Get-Command starship -ErrorAction SilentlyContinue) {
-    Write-Host "Starship: Ready" -ForegroundColor DarkGray
-} else {
-    Write-Host "Starship: Not found" -ForegroundColor Yellow
+Write-Host "`nQuick Status:" -ForegroundColor DarkGray
+$status.GetEnumerator() | ForEach-Object {
+    $color = if ($_.Value -like "✓*") { "Green" } elseif ($_.Value -like "✗*") { "Red" } else { "Gray" }
+    Write-Host "  $($_.Key): $($_.Value)" -ForegroundColor $color
 }
 
-if (Get-Command zoxide -ErrorAction SilentlyContinue) {
-    Write-Host "zoxide: Ready" -ForegroundColor DarkGray
-} else {
-    Write-Host "zoxide: Not found" -ForegroundColor DarkGray
-}
+# Helpful tips
+Write-Host "`nNext steps:" -ForegroundColor Cyan
+Write-Host "  1. Add functions to module files in: $modulesPath" -ForegroundColor White
+Write-Host "  2. Install missing tools: Run '.\Scripts\verify-installation.ps1 -Fix' (as admin)" -ForegroundColor White
+Write-Host "  3. Set Windows Terminal font to 'CaskaydiaCove NF'" -ForegroundColor White
+Write-Host "  4. Run '.\setup.ps1' for complete installation" -ForegroundColor White
 
-# Helpful tips if directories are missing
-$missingDirs = @()
-if (-not (Test-Path $corePath)) { $missingDirs += "Core" }
-if (-not (Test-Path $uiPath)) { $missingDirs += "UI" }
-if (-not (Test-Path $toolsPath)) { $missingDirs += "Tools" }
-if (-not (Test-Path $systemPath)) { $missingDirs += "System" }
-
-if ($missingDirs.Count -gt 0) {
-    Write-Host "`nMissing module directories: $($missingDirs -join ', ')" -ForegroundColor Yellow
-    Write-Host "Run .\setup.ps1 to create the complete modular structure" -ForegroundColor Cyan
+# Create a quick help function
+function Get-PowerShellHelp {
+    Write-Host "`nAvailable help commands:" -ForegroundColor Cyan
+    Write-Host "  Get-PowerShellHelp    Show this help" -ForegroundColor White
+    Write-Host "  Update-Profile        Update your profile" -ForegroundColor White
+    Write-Host "  . `$PROFILE            Reload profile" -ForegroundColor White
 }
 #endregion

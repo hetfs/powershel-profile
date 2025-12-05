@@ -5,7 +5,7 @@ Set-StrictMode -Version Latest
 $PSNativeCommandUseErrorActionPreference = $true
 
 # Environment variables
-$env:PAGER = "less"
+$env:PAGER = "delta"
 $env:BAT_THEME = "TwoDark"
 
 # PowerShell preferences
